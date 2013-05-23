@@ -10,14 +10,12 @@ Plays a announcement when a top10 ranked player of hlstats ce comes into your se
 #include <sdktools>
 #include <clientprefs>
 
-#define MAX_FILE_LEN 256
+#define MAX_SOUNDS 64
 
 new g_Rank[MAXPLAYERS+1] = { -1, ... };
 
-new Handle:g_hCvEnabled, bool:g_CvEnabled;
-new Handle:g_hCvGameType, String:g_CvGameType[32];
-new Handle:g_hCvTextType, g_CvTextType;
-new Handle:g_hCvSoundFile, Handle:g_hSoundFile;
+new Handle:g_hCvEnabled, Handle:g_hCvGameType, Handle:g_hCvTextType, Handle:g_hCvSoundsFile;
+new bool:g_CvEnabled, String:g_CvGameType[32], g_CvTextType, Handle:g_kvSoundsFile, g_iTotalSounds;
 
 new Handle:g_hEnableAnnouncementCookie;
 new Handle:g_hPlaySoundCookie;
@@ -34,6 +32,7 @@ new bool:g_IsLeft4Dead = false;
 #define PLUGIN_DESCRIPTION "Plays sound when a player top 10 ranked player of hlstats ce connects."
 #define PLUGIN_VERSION "2.0"
 #define PLUGIN_URL "https://forums.alliedmods.net/showthread.php?t=139703"
+
 public Plugin:myinfo = {
 	name = PLUGIN_NAME,
 	author = PLUGIN_AUTHOR,
@@ -73,7 +72,7 @@ public OnPluginStart() {
 	g_CvEnabled = InitCvar(g_hCvEnabled, OnConVarChanged, "sm_top10_hlstatsce_enabled", "1", "Whether this plugin should be enabled", FCVAR_DONTRECORD, true, 0.0, true, 1.0);
 	InitCvar(g_hCvGameType, OnConVarChanged, "sm_top10_hlstatsce_game", buffer, "The shortname found after the game settings for particular servers on admin page", FCVAR_DONTRECORD, _, _, _, _, 3);
 	g_CvTextType = InitCvar(g_hCvTextType, OnConVarChanged, "sm_top10_hlstatsce_text", "2", "Default message type. 1 = Center, 2 = Hint text, 3 = Regular text. Leave empty for center", FCVAR_DONTRECORD, true, 1.0, true, 3.0);
-	g_hCvSoundFile = CreateConVar("sm_top10_hlstatsce_sound", "lethalzone/top10/", "The sound file/folder (random file, non-recursive) to play when a top10 hlstats player joins the game", FCVAR_DONTRECORD);
+	g_hCvSoundsFile = CreateConVar("sm_top10_hlstatsce_sounds", "addons/sourcemod/config/top10_sounds.kv", "The config file containing the paths of sounds to play when a top10 hlstats player joins the game", FCVAR_DONTRECORD);
 
 	g_Connecting = true;
 	SQL_TConnect(T_Connect, "top10");
@@ -94,17 +93,47 @@ public Action:t14(client, argc) {
 	return Plugin_Handled;
 }
 
-public OnMapStart() {
-	if (!g_IsLeft4Dead && g_hCvSoundFile != INVALID_HANDLE) {
-		decl String:path[MAX_FILE_LEN];
-		GetConVarString(g_hCvSoundFile, path, sizeof(path));
-
-		PrecacheSounds(path, true, g_hSoundFile);
-	}
-
-	if (!g_Connecting && g_hDatabase == INVALID_HANDLE) {
+public OnMapStart()
+{
+	if (!g_Connecting && g_hDatabase == INVALID_HANDLE)
+	{
 		g_Connecting = true;
 		SQL_TConnect(T_Connect, "top10");
+	}
+	
+	if(!g_IsLeft4Dead && (g_hCvSoundsFile != INVALID_HANDLE))
+	{
+		decl String:path[PLATFORM_MAX_PATH];
+		GetConVarString(g_hCvSoundsFile, path, sizeof(path));
+		
+		if ((strlen(path) == 0) || !FileExists(path))
+		{
+			return;
+		}
+		
+		if(g_kvSoundsFile != INVALID_HANDLE)
+		{
+			CloseHandle(g_kvSoundsFile);
+			g_kvSoundsFile = INVALID_HANDLE;
+		}
+		g_kvSoundsFile = CreateKeyValues("");
+		FileToKeyValues(g_kvSoundsFile, path);
+		
+		g_iTotalSounds = 0;
+		decl String:KvStr[4], String:SndBuffer[PLATFORM_MAX_PATH];
+		
+		for(new i = 0; i < MAX_SOUNDS; i++)
+		{
+			Format(KvStr, sizeof(KvStr), "%i", i);
+			KvGetString(g_kvSoundsFile, KvStr, SndBuffer, PLATFORM_MAX_PATH, "\0");
+			if(!SndBuffer[0])
+			{
+				break;
+			}
+			PrecacheSound(SndBuffer, true);
+			AddFileToDownloadsTable(SndBuffer);
+			g_iTotalSounds++;
+		}
 	}
 }
 
@@ -144,32 +173,35 @@ public OnClientCookiesCached(client) {
 				}
 			}
 
-			if (g_hSoundFile != INVALID_HANDLE && !g_IsLeft4Dead) {
-				new index = GetArraySize(g_hSoundFile);
-
-				if (index) {
-					decl String:sound[MAX_FILE_LEN];
-					index = GetRandomInt(0, index - 1);
-
-					GetArrayString(g_hSoundFile, index, sound, sizeof(sound));
-
-					for (new i = 1; i <= MaxClients; i++) {
-						if (!IsClientValid(i)) {
+			if (g_kvSoundsFile != INVALID_HANDLE && !g_IsLeft4Dead)
+			{
+				if(g_iTotalSounds)
+				{
+					decl String:KvStr[4], String:sound[PLATFORM_MAX_PATH];
+					new SndNum = GetRandomInt(0, g_iTotalSounds - 1);
+					
+					Format(KvStr, sizeof(KvStr), "%i", SndNum);
+					KvGetString(g_kvSoundsFile, KvStr, sound, PLATFORM_MAX_PATH, "\0");
+					
+					for (new i = 1; i <= MaxClients; i++)
+					{
+						if (!IsClientValid(i))
+						{
 							continue;
 						}
 
 						GetClientCookie(i, g_hPlaySoundCookie, buffer, sizeof(buffer));
 
-						if (StrEqual(buffer, "") || StringToInt(buffer)) {
+						if (StrEqual(buffer, "") || StringToInt(buffer))
+						{
 							EmitSoundToClient(i, sound);
 						}
 					}
 				}
 			}
 		}
-
-		g_Rank[client] = -1;
 	}
+	g_Rank[client] = -1;
 }
 
 PrintMessage(client, const String:text[]) {
@@ -364,57 +396,6 @@ public OnConVarChanged(Handle:cvar, const String:oldVal[], const String:newVal[]
 	}
 }
 
-stock PrecacheSounds(const String:path[], bool:preload = false, &Handle:array) {
-	CloseHandle2(array);
-
-	array = CreateArray(MAX_FILE_LEN);
-
-	if (strlen(path) == 0) {
-		return 0;
-	}
-
-	decl String:path_[MAX_FILE_LEN];
-	Format(path_, sizeof(path_), "sound/%s", path);
-
-	new len = strlen(path_);
-	if (path_[len-1] == '/') {
-		path_[len-1] = '\0';
-	}
-
-	if (FileExists(path_)) {
-		PrecacheSound(path_, preload);
-		AddFileToDownloadsTable(path_);
-		PushArrayString(array, path_);
-	}
-	else if (DirExists(path_)) {
-		new Handle:directory = OpenDirectory(path_);
-
-		if (directory != INVALID_HANDLE) {
-			decl FileType:type;
-
-			decl String:file[MAX_FILE_LEN];
-			while (ReadDirEntry(directory, file, sizeof(file), type)) {
-				if (type != FileType_File) {
-					continue;
-				}
-
-				Format(file, sizeof(file), "%s/%s", path_, file);
-				ReplaceStringEx(file, sizeof(file), "sound/", "");
-				if (!PrecacheSound(file, preload)) {
-					continue;
-				}
-
-				PushArrayString(array, file);
-
-				Format(file, sizeof(file), "sound/%s", file);
-				AddFileToDownloadsTable(file);
-			}
-		}
-	}
-
-	return GetArraySize(array);
-}
-
 /**
  * \brief Creates a plugin version console variable.
  *
@@ -545,11 +526,4 @@ stock IsClientValid(
 	}
 
 	return client > 0 && client <= MaxClients && IsClientConnected(client) && (!in_game || IsClientInGame(client)) && (in_kick_queue || !IsClientInKickQueue(client));
-}
-
-stock CloseHandle2(&Handle:hndl) {
-	if (hndl != INVALID_HANDLE) {
-		CloseHandle(hndl);
-		hndl = INVALID_HANDLE;
-	}
 }
