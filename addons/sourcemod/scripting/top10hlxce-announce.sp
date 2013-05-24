@@ -131,6 +131,7 @@ public OnMapStart()
 				break;
 			}
 			PrecacheSound(SndBuffer, true);
+			Format(SndBuffer, sizeof(SndBuffer), "sound/%s", SndBuffer);
 			AddFileToDownloadsTable(SndBuffer);
 			g_iTotalSounds++;
 		}
