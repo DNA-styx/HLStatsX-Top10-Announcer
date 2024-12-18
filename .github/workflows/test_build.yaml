@@ -22,8 +22,8 @@ jobs:
 
       - name: Set environment variables
         run: |
-          SOURCEMOD_PATH=$GITHUB_WORKSPACE
-          echo "SOURCEMOD_PATH=$SOURCEMOD_PATH"/addons/sourcemod/ >> $GITHUB_ENV
+          SOURCEMOD_PATH=$GITHUB_WORKSPACE/addons/sourcemod/
+          echo "SOURCEMOD_PATH=$SOURCEMOD_PATH" >> $GITHUB_ENV
           echo "SCRIPTING_PATH=$SOURCEMOD_PATH/scripting" >> $GITHUB_ENV
 
       - name: Setup SourcePawn Compiler ${{ matrix.SM_VERSION }}
