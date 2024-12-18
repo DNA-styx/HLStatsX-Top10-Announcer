@@ -71,20 +71,21 @@ public OnPluginStart() {
 	}
 
 	InitVersionCvar("top10_hlstatsce", PLUGIN_NAME, PLUGIN_VERSION);
-	g_CvEnabled = InitCvar(g_hCvEnabled, OnConVarChanged, "sm_top10_hlstatsce_enabled", "1", "Whether this plugin should be enabled", FCVAR_DONTRECORD, true, 0.0, true, 1.0);
+	
+	g_CvEnabled 		= InitCvar(g_hCvEnabled, OnConVarChanged, "sm_top10_hlstatsce_enabled", "1", "Whether this plugin should be enabled", FCVAR_DONTRECORD, true, 0.0, true, 1.0);
 	InitCvar(g_hCvGameType, OnConVarChanged, "sm_top10_hlstatsce_game", buffer, "The shortname found after the game settings for particular servers on admin page", FCVAR_DONTRECORD, _, _, _, _, 3);
-	g_CvTextType = InitCvar(g_hCvTextType, OnConVarChanged, "sm_top10_hlstatsce_text", "2", "Default message type. 1 = Center, 2 = Hint text, 3 = Regular text. Leave empty for center", FCVAR_DONTRECORD, true, 1.0, true, 3.0);
-	g_hCvSoundsFile = CreateConVar("sm_top10_hlstatsce_sounds", "addons/sourcemod/configs/top10_sounds.kv", "The config file containing the paths of sounds to play when a top10 hlstats player joins the game", FCVAR_DONTRECORD);
+	g_CvTextType 		= InitCvar(g_hCvTextType, OnConVarChanged, "sm_top10_hlstatsce_text", "2", "Default message type. 1 = Center, 2 = Hint text, 3 = Regular text. Leave empty for center", FCVAR_DONTRECORD, true, 1.0, true, 3.0);
+	g_hCvSoundsFile 	= CreateConVar("sm_top10_hlstatsce_sounds", "addons/sourcemod/configs/top10_sounds.kv", "The config file containing the paths of sounds to play when a top10 hlstats player joins the game", FCVAR_DONTRECORD);
 
 	g_Connecting = true;
 	SQL_TConnect(T_Connect, "top10");
 
 	SetCookieMenuItem(CookieMenuHandler_Top10, 0, "Top10 Player Announcement");
 
-	g_hEnableAnnouncementCookie = RegClientCookie("hlstatsx_top10_joinmsg_enable", "Whether to print a chag message whenever a top10 player enters the server.", CookieAccess_Public);
-	g_hPlaySoundCookie = RegClientCookie("hlstatsx_top10_joinmsg_sound", "Whether to play a sound whenever a top10 player enters the server.", CookieAccess_Public);
-	g_hAnnounceMeCookie = RegClientCookie("hlstatsx_top10_announceme", "Whether the player's top10 rank should be announced when he enters the server.", CookieAccess_Public);
-	g_hMessageTypeCookie = RegClientCookie("hlstatsx_top10_joinmsg_type", "Top10 join message type. 1 = Center, 2 = Hint text, 3 = Regular text. Leave empty for center.", CookieAccess_Public);
+	g_hEnableAnnouncementCookie	= RegClientCookie("hlstatsx_top10_joinmsg_enable", "Whether to print a chat message whenever a top10 player enters the server.", CookieAccess_Public);
+	g_hPlaySoundCookie			= RegClientCookie("hlstatsx_top10_joinmsg_sound", "Whether to play a sound whenever a top10 player enters the server.", CookieAccess_Public);
+	g_hAnnounceMeCookie			= RegClientCookie("hlstatsx_top10_announceme", "Whether the player's top10 rank should be announced when he enters the server.", CookieAccess_Public);
+	g_hMessageTypeCookie		= RegClientCookie("hlstatsx_top10_joinmsg_type", "Top10 join message type. 1 = Center, 2 = Hint text, 3 = Regular text. Leave empty for center.", CookieAccess_Public);
 
 	RegConsoleCmd("sm_t14", t14);
 }
