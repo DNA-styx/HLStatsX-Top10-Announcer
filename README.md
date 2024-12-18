@@ -26,3 +26,18 @@ databases.cfg
 		//"timeout"			"0"
 		"port"				"3306"
 	}
+```
+
+# Cvars
+
+```
+"sm_top10_hlstatsce_enabled", "1", "Whether this plugin should be enabled"
+"sm_top10_hlstatsce_game", buffer, "The shortname found after the game settings for particular servers on admin page"
+"sm_top10_hlstatsce_text", "2", "Default message type. 1 = Center, 2 = Hint text, 3 = Regular text. Leave empty for center"
+"sm_top10_hlstatsce_sounds", "addons/sourcemod/configs/top10_sounds.kv", "The config file containing the paths of sounds to play when a top10 hlstats player joins the game"
+```
+
+# In Game Commands
+```
+!settings
+```
