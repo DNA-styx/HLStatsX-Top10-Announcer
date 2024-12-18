@@ -236,7 +236,7 @@ CheckTop10(userid, const String:auth[])	{
 	decl String:query[512];
 
 	Format(query, sizeof(query),
-		"SELECT COUNT(*) AS rank \
+		"SELECT COUNT(*) AS 'rank' \
 		FROM hlstats_Players \
 		WHERE \
 			hlstats_Players.game = '%s' AND \
