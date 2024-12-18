@@ -1,0 +1,33 @@
+name: Compile & Push
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'addons/sourcemod/scripting/**'
+  pull_request:
+    paths:
+      - 'addons/sourcemod/scripting/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+        
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile My plugin
+        uses: SheplyRam/compile-sourcemod-plugin@v1
+        with:
+          sourcemod: '1.12'
+          input: 'addons/sourcemod/scripting/top10hlxce-announce.sp'
+          output: 'addons/sourcemod/plugins/top10hlxce-announce.smx'
+          includes: 'addons/sourcemod/include'
+
+      - name: Commit changes
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git add addons/sourcemod/plugins/top10hlxce-announce.smx
+          git commit -m "🐳 chore: Compile updated version"
+          git push
