@@ -30,7 +30,7 @@ new bool:g_IsLeft4Dead = false;
 #define PLUGIN_NAME "HLStatsX Top10 Announcer"
 #define PLUGIN_AUTHOR "Snelvuur, DNA.styx"
 #define PLUGIN_DESCRIPTION "Plays a sound when a Top10 HLStatsX player connects."
-#define PLUGIN_VERSION "2.0.1"
+#define PLUGIN_VERSION "2.0.2-dev"
 #define PLUGIN_URL "https://forums.alliedmods.net/showthread.php?t=139703"
 
 public Plugin:myinfo = {
