@@ -27,9 +27,9 @@ new Handle:g_hDatabase = INVALID_HANDLE;
 
 new bool:g_IsLeft4Dead = false;
 
-#define PLUGIN_NAME "Top 10 hlstats ce announcer"
+#define PLUGIN_NAME "HLStatsX Top10 Announcer"
 #define PLUGIN_AUTHOR "Snelvuur, DNA.styx"
-#define PLUGIN_DESCRIPTION "Plays sound when a player top 10 ranked player of hlstats ce connects."
+#define PLUGIN_DESCRIPTION "Plays sound when a Top10 ranked player of HLStatsX connects."
 #define PLUGIN_VERSION "2.0.1"
 #define PLUGIN_URL "https://forums.alliedmods.net/showthread.php?t=139703"
 
@@ -80,7 +80,7 @@ public OnPluginStart() {
 	g_Connecting = true;
 	SQL_TConnect(T_Connect, "top10");
 
-	SetCookieMenuItem(CookieMenuHandler_Top10, 0, "Top10 Player Announcement");
+	SetCookieMenuItem(CookieMenuHandler_Top10, 0, "HLStatsX Top10 Announcement");
 
 	g_hEnableAnnouncementCookie	= RegClientCookie("hlstatsx_top10_joinmsg_enable", "Whether to print a chat message whenever a top10 player enters the server.", CookieAccess_Public);
 	g_hPlaySoundCookie			= RegClientCookie("hlstatsx_top10_joinmsg_sound", "Whether to play a sound whenever a top10 player enters the server.", CookieAccess_Public);
@@ -163,7 +163,7 @@ public OnClientCookiesCached(client) {
 
 		if (StrEqual(buffer, "") || StringToInt(buffer)) {
 			decl String:message[128];
-			Format(message, sizeof(message), "Top 10 player %N connected, currently rank %i", client, g_Rank[client]);
+			Format(message, sizeof(message), "Top10 player %N connected, currently rank %i", client, g_Rank[client]);
 
 			for (new i = 1; i <= MaxClients; i++) {
 				if (!IsClientValid(i)) {
