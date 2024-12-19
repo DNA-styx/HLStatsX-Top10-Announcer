@@ -29,7 +29,7 @@ new bool:g_IsLeft4Dead = false;
 
 #define PLUGIN_NAME "HLStatsX Top10 Announcer"
 #define PLUGIN_AUTHOR "Snelvuur, DNA.styx"
-#define PLUGIN_DESCRIPTION "Plays sound when a Top10 ranked player of HLStatsX connects."
+#define PLUGIN_DESCRIPTION "Plays a sound when a Top10 HLStatsX player connects."
 #define PLUGIN_VERSION "2.0.1"
 #define PLUGIN_URL "https://forums.alliedmods.net/showthread.php?t=139703"
 
@@ -75,7 +75,7 @@ public OnPluginStart() {
 	g_CvEnabled 		= InitCvar(g_hCvEnabled, OnConVarChanged, "sm_top10_hlstatsce_enabled", "1", "Whether this plugin should be enabled", FCVAR_DONTRECORD, true, 0.0, true, 1.0);
 	InitCvar(g_hCvGameType, OnConVarChanged, "sm_top10_hlstatsce_game", buffer, "The shortname found after the game settings for particular servers on admin page", FCVAR_DONTRECORD, _, _, _, _, 3);
 	g_CvTextType 		= InitCvar(g_hCvTextType, OnConVarChanged, "sm_top10_hlstatsce_text", "2", "Default message type. 1 = Center, 2 = Hint text, 3 = Regular text. Leave empty for center", FCVAR_DONTRECORD, true, 1.0, true, 3.0);
-	g_hCvSoundsFile 	= CreateConVar("sm_top10_hlstatsce_sounds", "addons/sourcemod/configs/top10_sounds.kv", "The config file containing the paths of sounds to play when a top10 hlstats player joins the game", FCVAR_DONTRECORD);
+	g_hCvSoundsFile 	= CreateConVar("sm_top10_hlstatsce_sounds", "addons/sourcemod/configs/hlstatsx_top10_sounds.kv", "The config file containing the paths of sounds to play when a top10 HLStatsX player joins the game", FCVAR_DONTRECORD);
 
 	g_Connecting = true;
 	SQL_TConnect(T_Connect, "top10");
