@@ -247,7 +247,7 @@ void CheckTop10(int userid, const char[] auth)
 	char query[512];
 
 	Format(query, sizeof(query),
-		"SELECT COUNT(*) AS rank \
+		"SELECT COUNT(*) AS 'rank' \
 		FROM hlstats_Players \
 		WHERE \
 			hlstats_Players.game = '%s' AND \
