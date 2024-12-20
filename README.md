@@ -19,7 +19,7 @@ databases.cfg
 "top10"
 	{
 		"driver"			"default"
-		"host"				"<your datbase ip or hostname>"
+		"host"				"<your database ip or hostname>"
 		"database"			"<your hlstatx database name>"
 		"user"				"<your database userid>"
 		"pass"				"<your database password>"
