@@ -144,7 +144,7 @@ public OnClientPostAdminCheck(client) {
 	}
 
 	decl String:steamid[32];
-	GetClientAuthString(client, steamid, sizeof(steamid));
+	GetClientAuthId(client, AuthId_Steam2, steamid, sizeof(steamid));
 	CheckTop10(client, steamid);
 }
 
