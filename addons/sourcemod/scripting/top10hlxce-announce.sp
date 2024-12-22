@@ -28,9 +28,9 @@ new Handle:g_hDatabase = INVALID_HANDLE;
 new bool:g_IsLeft4Dead = false;
 
 #define PLUGIN_NAME "Top 10 hlstats ce announcer"
-#define PLUGIN_AUTHOR "Snelvuur"
+#define PLUGIN_AUTHOR "Snelvuur, DNA.styx"
 #define PLUGIN_DESCRIPTION "Plays sound when a player top 10 ranked player of hlstats ce connects."
-#define PLUGIN_VERSION "2.0"
+#define PLUGIN_VERSION "2.0.1-dev"
 #define PLUGIN_URL "https://forums.alliedmods.net/showthread.php?t=139703"
 
 public Plugin:myinfo = {
@@ -234,7 +234,7 @@ CheckTop10(userid, const String:auth[])	{
 	decl String:query[512];
 
 	Format(query, sizeof(query),
-		"SELECT COUNT(*) AS rank \
+		"SELECT COUNT(*) AS `rank` \
 		FROM hlstats_Players \
 		WHERE \
 			hlstats_Players.game = '%s' AND \
