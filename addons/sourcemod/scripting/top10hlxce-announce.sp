@@ -338,7 +338,7 @@ void ShowPrefMenu(int client)
 	DisplayMenu(menu, client, MENU_TIME_FOREVER);
 }
 
-public int MenuHandler_Top10(Menu menu, MenuAction action, int param1, int param2)
+public void MenuHandler_Top10(Menu menu, MenuAction action, int param1, int param2)
 {
 	if (action == MenuAction_Select)
 	{
