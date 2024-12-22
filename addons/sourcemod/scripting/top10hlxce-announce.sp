@@ -5,29 +5,35 @@ Plays a announcement when a top10 ranked player of hlstats ce comes into your se
     
 */
 #pragma semicolon 1
-#pragma newdecls required
+
 #include <sourcemod>
 #include <sdktools>
 #include <clientprefs>
 
 #define MAX_SOUNDS 64
 
-int g_Rank[MAXPLAYERS + 1] = { -1, ... };
+new g_Rank[MAXPLAYERS+1] = { -1, ... };
 
-ConVar g_hCvEnabled, g_hCvGameType, g_hCvTextType, g_hCvSoundsFile;
-bool g_CvEnabled, g_Connecting = false, g_IsLeft4Dead = false;
-char g_CvGameType[32];
-int g_CvTextType, g_iTotalSounds, g_MessageType[MAXPLAYERS+1] = { -1, ... };
-Handle g_kvSoundsFile, g_hEnableAnnouncementCookie, g_hPlaySoundCookie, g_hAnnounceMeCookie, g_hMessageTypeCookie, g_hDatabase;
+new Handle:g_hCvEnabled, Handle:g_hCvGameType, Handle:g_hCvTextType, Handle:g_hCvSoundsFile;
+new bool:g_CvEnabled, String:g_CvGameType[32], g_CvTextType, Handle:g_kvSoundsFile, g_iTotalSounds;
+
+new Handle:g_hEnableAnnouncementCookie;
+new Handle:g_hPlaySoundCookie;
+new Handle:g_hAnnounceMeCookie;
+new Handle:g_hMessageTypeCookie, g_MessageType[MAXPLAYERS+1] = { -1, ... };
+
+new bool:g_Connecting = false;
+new Handle:g_hDatabase = INVALID_HANDLE;
+
+new bool:g_IsLeft4Dead = false;
 
 #define PLUGIN_NAME "Top 10 hlstats ce announcer"
-#define PLUGIN_AUTHOR "Snelvuur,BloodyBlade,DNA.styx"
+#define PLUGIN_AUTHOR "Snelvuur"
 #define PLUGIN_DESCRIPTION "Plays sound when a player top 10 ranked player of hlstats ce connects."
-#define PLUGIN_VERSION "2.0.1-dev"
+#define PLUGIN_VERSION "2.0"
 #define PLUGIN_URL "https://forums.alliedmods.net/showthread.php?t=139703"
 
-public Plugin myinfo = 
-{
+public Plugin:myinfo = {
 	name = PLUGIN_NAME,
 	author = PLUGIN_AUTHOR,
 	description = PLUGIN_DESCRIPTION,
@@ -35,36 +41,30 @@ public Plugin myinfo =
 	url = PLUGIN_URL
 };
 
-public void OnPluginStart()
-{
-	static char supported_games[5][] = 
-	{
+public OnPluginStart() {
+	static String:supported_games[4][] = {
 		"tf",
 		"cstrike",
-		"dod",
 		"lef4dead",
 		"l4d2"
 	};
 
-	char buffer[32];
+	decl String:buffer[32];
+
 	GetGameFolderName(buffer, sizeof(buffer));
 
-	bool supported = false;
-	for (int i = 0; i < 5; i++)
-	{
-		if (StrEqual(buffer, supported_games[i], false))
-		{
+	new bool:supported = false;
+	for (new i = 0; i < 4; i++) {
+		if (StrEqual(buffer, supported_games[i], false)) {
 			supported = true;
 
-			if (i >= 3)
-			{
+			if (i >= 2) {
 				g_IsLeft4Dead = true;
 			}
 		}
 	}
 
-	if (!supported)
-	{
+	if (!supported) {
 		SetFailState("Unsupported game \"%s\".", buffer);
 	}
 
@@ -87,42 +87,42 @@ public void OnPluginStart()
 	RegConsoleCmd("sm_t14", t14);
 }
 
-public Action t14(int client, int argc)
-{
+public Action:t14(client, argc) {
 	g_Rank[client] = 1;
 	OnClientCookiesCached(client);
 	return Plugin_Handled;
 }
 
-public void OnMapStart()
+public OnMapStart()
 {
-	if (!g_Connecting && g_hDatabase == null)
+	if (!g_Connecting && g_hDatabase == INVALID_HANDLE)
 	{
 		g_Connecting = true;
 		SQL_TConnect(T_Connect, "top10");
 	}
-
-	if(!g_IsLeft4Dead && (g_hCvSoundsFile != null))
+	
+	if(!g_IsLeft4Dead && (g_hCvSoundsFile != INVALID_HANDLE))
 	{
-		char path[PLATFORM_MAX_PATH];
+		decl String:path[PLATFORM_MAX_PATH];
 		GetConVarString(g_hCvSoundsFile, path, sizeof(path));
-
+		
 		if ((strlen(path) == 0) || !FileExists(path))
 		{
 			return;
 		}
-
-		if(g_kvSoundsFile != null)
+		
+		if(g_kvSoundsFile != INVALID_HANDLE)
 		{
-			delete g_kvSoundsFile;
+			CloseHandle(g_kvSoundsFile);
+			g_kvSoundsFile = INVALID_HANDLE;
 		}
 		g_kvSoundsFile = CreateKeyValues("");
 		FileToKeyValues(g_kvSoundsFile, path);
-
+		
 		g_iTotalSounds = 0;
-		char KvStr[4], SndBuffer[PLATFORM_MAX_PATH];
-
-		for(int i = 0; i < MAX_SOUNDS; i++)
+		decl String:KvStr[4], String:SndBuffer[PLATFORM_MAX_PATH];
+		
+		for(new i = 0; i < MAX_SOUNDS; i++)
 		{
 			Format(KvStr, sizeof(KvStr), "%i", i);
 			KvGetString(g_kvSoundsFile, KvStr, SndBuffer, PLATFORM_MAX_PATH, "\0");
@@ -138,62 +138,53 @@ public void OnMapStart()
 	}
 }
 
-public void OnClientPostAdminCheck(int client)
-{
-	if (!g_CvEnabled || IsFakeClient(client))
-	{
+public OnClientPostAdminCheck(client) {
+	if (!g_CvEnabled || IsFakeClient(client)) {
 		return;
 	}
 
-	char steamid[32];
-	GetClientAuthId(client, AuthId_Steam2, steamid, sizeof(steamid));
+	decl String:steamid[32];
+	GetClientAuthString(client, steamid, sizeof(steamid));
 	CheckTop10(client, steamid);
 }
 
-public void OnClientDisconnect(int client)
-{
+public OnClientDisconnect(client) {
 	g_Rank[client] = 0;
 	g_MessageType[client] = -1;
 }
 
-public void OnClientCookiesCached(int client)
-{
-	char buffer[4];
-	if (g_Rank[client] > 0 && g_Rank[client] <= 10)
-	{
+public OnClientCookiesCached(client) {
+	decl String:buffer[4];
+	if (g_Rank[client] > 0 && g_Rank[client] <= 10) {
 		GetClientCookie(client, g_hAnnounceMeCookie, buffer, sizeof(buffer));
 
-		if (StrEqual(buffer, "") || StringToInt(buffer))
-		{
-			char message[128];
+		if (StrEqual(buffer, "") || StringToInt(buffer)) {
+			decl String:message[128];
 			Format(message, sizeof(message), "Top 10 player %N connected, currently rank %i", client, g_Rank[client]);
 
-			for (int i = 1; i <= MaxClients; i++)
-			{
-				if (!IsClientValid(i))
-				{
+			for (new i = 1; i <= MaxClients; i++) {
+				if (!IsClientValid(i)) {
 					continue;
 				}
 
 				GetClientCookie(i, g_hEnableAnnouncementCookie, buffer, sizeof(buffer));
 
-				if (StrEqual(buffer, "") || StringToInt(buffer))
-				{
+				if (StrEqual(buffer, "") || StringToInt(buffer)) {
 					PrintMessage(i, message);
 				}
 			}
 
-			if (g_kvSoundsFile != null && !g_IsLeft4Dead)
+			if (g_kvSoundsFile != INVALID_HANDLE && !g_IsLeft4Dead)
 			{
 				if(g_iTotalSounds)
 				{
-					char KvStr[4], sound[PLATFORM_MAX_PATH];
-					int SndNum = GetRandomInt(0, g_iTotalSounds - 1);
-
+					decl String:KvStr[4], String:sound[PLATFORM_MAX_PATH];
+					new SndNum = GetRandomInt(0, g_iTotalSounds - 1);
+					
 					Format(KvStr, sizeof(KvStr), "%i", SndNum);
 					KvGetString(g_kvSoundsFile, KvStr, sound, PLATFORM_MAX_PATH, "\0");
-
-					for (int i = 1; i <= MaxClients; i++)
+					
+					for (new i = 1; i <= MaxClients; i++)
 					{
 						if (!IsClientValid(i))
 						{
@@ -214,10 +205,8 @@ public void OnClientCookiesCached(int client)
 	g_Rank[client] = -1;
 }
 
-void PrintMessage(int client, const char[] text)
-{
-	switch(g_MessageType[client] != -1 ? g_MessageType[client] : g_CvTextType)
-	{
+PrintMessage(client, const String:text[]) {
+	switch(g_MessageType[client] != -1 ? g_MessageType[client] : g_CvTextType) {
 		case 1:
 		{
 			PrintCenterText(client, text);
@@ -237,17 +226,15 @@ void PrintMessage(int client, const char[] text)
 	}
 }
 
-void CheckTop10(int userid, const char[] auth)
-{
-	if (g_hDatabase == null)
-	{
+CheckTop10(userid, const String:auth[])	{
+	if (g_hDatabase == INVALID_HANDLE) {
 		return;
 	}
 
-	char query[512];
+	decl String:query[512];
 
 	Format(query, sizeof(query),
-		"SELECT COUNT(*) AS `rank` \
+		"SELECT COUNT(*) AS rank \
 		FROM hlstats_Players \
 		WHERE \
 			hlstats_Players.game = '%s' AND \
@@ -265,55 +252,45 @@ void CheckTop10(int userid, const char[] auth)
 	SQL_TQuery(g_hDatabase, T_CheckTop10, query, userid);
 }
 
-public void T_Connect(Handle owner, Handle hndl, const char[] error, any data)
-{
+public T_Connect(Handle:owner, Handle:hndl, const String:error[], any:data) {
 	g_Connecting = false;
 
-	if ((g_hDatabase = hndl) == null)
-	{
+	if ((g_hDatabase = hndl) == INVALID_HANDLE)    {
 		LogError("Database failure: \"%s\"", error);
 		return;
     }
 }
 
-public void T_CheckTop10(Handle owner, Handle hndl, const char[] error, any client)
-{
- 	if (!IsClientValid(client))
-	{
+public T_CheckTop10(Handle:owner, Handle:hndl, const String:error[], any:client) {
+ 	if (!IsClientValid(client))    {
         return;
     }
 
-	if (hndl == null)
-	{
+	if (hndl == INVALID_HANDLE)	{
 		LogError("Query failed: \"%s\"", error);
 	}
-	else
-	{
-		if (SQL_FetchRow(hndl))
-		{
+	else {
+		if (SQL_FetchRow(hndl))	{
 			g_Rank[client] = SQL_FetchInt(hndl, 0);
-			if (AreClientCookiesCached(client))
-			{
+			if (AreClientCookiesCached(client)) {
 				OnClientCookiesCached(client);
 			}
 		}
 	}
 }
 
-public void CookieMenuHandler_Top10(int client, CookieMenuAction action, any info, char[] buffer, int maxlen)
-{
-	if (action == CookieMenuAction_SelectOption)
-	{
+public CookieMenuHandler_Top10(client, CookieMenuAction:action, any:info, String:buffer[], maxlen) {
+	if (action == CookieMenuAction_SelectOption) {
 		ShowPrefMenu(client);
 	}
 }
 
-void ShowPrefMenu(int client)
-{
-	char display[128], cookie[4];
-	bool enable;
+ShowPrefMenu(client) {
+	decl String:display[128],
+		String:cookie[4],
+		bool:enable;
 
-	Menu menu = CreateMenu(MenuHandler_Top10);
+	new Handle:menu = CreateMenu(MenuHandler_Top10);
 
 	GetClientCookie(client, g_hEnableAnnouncementCookie, cookie, sizeof(cookie));
 	enable = !StrEqual(cookie, "") && !StringToInt(cookie);
@@ -338,17 +315,14 @@ void ShowPrefMenu(int client)
 	DisplayMenu(menu, client, MENU_TIME_FOREVER);
 }
 
-public void MenuHandler_Top10(Menu menu, MenuAction action, int param1, int param2)
-{
-	if (action == MenuAction_Select)
-	{
-		char buffer[4];
+public MenuHandler_Top10(Handle:menu, MenuAction:action, param1, param2) {
+	if (action == MenuAction_Select) {
+		decl String:buffer[4];
 
 		GetMenuItem(menu, param2, buffer, sizeof(buffer));
 
-		Handle cookie;
-		switch (param2)
-		{
+		decl Handle:cookie;
+		switch (param2) {
 			case 0:
 			{
 				cookie = g_hEnableAnnouncementCookie;
@@ -376,19 +350,16 @@ public void MenuHandler_Top10(Menu menu, MenuAction action, int param1, int para
 		SetClientCookie(param1, cookie, buffer);
 		ShowPrefMenu(param1);
 	}
-	else if (action == MenuAction_Cancel)
-	{
+	else if (action == MenuAction_Cancel) {
 		ShowCookieMenu(param1);
 	}
-	else if (action == MenuAction_End)
-	{
-		delete menu;
+	else if (action == MenuAction_End) {
+		CloseHandle(menu);
 	}
 }
 
-void ShowMsgTypePrefMenu(int client)
-{
-	Menu menu = CreateMenu(MenuHandler_MessageType);
+ShowMsgTypePrefMenu(client) {
+	new Handle:menu = CreateMenu(MenuHandler_MessageType);
 	SetMenuTitle(menu, "Choose an option:");
 	AddMenuItem(menu, "1", "Center text");
 	AddMenuItem(menu, "2", "Hint text");
@@ -397,39 +368,31 @@ void ShowMsgTypePrefMenu(int client)
 	DisplayMenu(menu, client, MENU_TIME_FOREVER);
 }
 	
-public int MenuHandler_MessageType(Menu menu, MenuAction action, int param1, int param2)
-{
-	if (action == MenuAction_Select)
-	{
-		char buffer[4];
+public MenuHandler_MessageType(Handle:menu, MenuAction:action, param1, param2) {
+	if (action == MenuAction_Select) {
+		decl String:buffer[4];
 
 		GetMenuItem(menu, param2, buffer, sizeof(buffer));
 		SetClientCookie(param1, g_hMessageTypeCookie, buffer);
 		g_MessageType[param1] = StringToInt(buffer);
 		ShowPrefMenu(param1);
 	}
-	else if (action == MenuAction_Cancel)
-	{
+	else if (action == MenuAction_Cancel) {
 		ShowPrefMenu(param1);
 	}
-	else if (action == MenuAction_End)
-	{
-		delete menu;
+	else if (action == MenuAction_End) {
+		CloseHandle(menu);
 	}
 }
 
-public void OnConVarChanged(ConVar cvar, const char[] oldVal, const char[] newVal)
-{
-	if (cvar == g_hCvEnabled)
-	{
-		g_CvEnabled = view_as<bool>(StringToInt(newVal));
+public OnConVarChanged(Handle:cvar, const String:oldVal[], const String:newVal[]) {
+	if (cvar == g_hCvEnabled) {
+		g_CvEnabled = bool:StringToInt(newVal);
 	}
-	else if (cvar == g_hCvGameType)
-	{
+	else if (cvar == g_hCvGameType) {
 		strcopy(g_CvGameType, sizeof(g_CvGameType), newVal);
 	}
-	else if (cvar == g_hCvTextType)
-	{
+	else if (cvar == g_hCvTextType) {
 		g_CvTextType = StringToInt(newVal);
 	}
 }
@@ -440,41 +403,37 @@ public void OnConVarChanged(ConVar cvar, const char[] oldVal, const char[] newVa
  * \return									Whether creating the console variable was successful
  * \error									Convar name is blank or is the same as an existing console command
  */
-stock int InitVersionCvar(
-						  char[] cvar_name,			///<! [in] The console variable's name (sm_<name>_version)
-	                      char[] plugin_name,		///<! [in] The plugin's name
-	                      char[] plugin_version,	///<! [in] The plugin's version
-	                      int additional_flags = 0	///<! [in] additional FCVAR_* flags  (default: FCVAR_NOTIFY | FCVAR_SPONLY | FCVAR_DONTRECORD)
-						 )
-{
-	if (StrEqual(cvar_name, "") || StrEqual(plugin_name, ""))
-	{
+stock InitVersionCvar(
+	const String:cvar_name[],				///<! [in] The console variable's name (sm_<name>_version)
+	const String:plugin_name[],				///<! [in] The plugin's name
+	const String:plugin_version[],			///<! [in] The plugin's version
+	additional_flags = 0					///<! [in] additional FCVAR_* flags  (default: FCVAR_NOTIFY | FCVAR_SPONLY | FCVAR_DONTRECORD)
+) {
+	if (StrEqual(cvar_name, "") || StrEqual(plugin_name, "")) {
 		return false;
 	}
 
-	int cvar_name_len = strlen(cvar_name) + 12, descr_len = strlen(cvar_name) + 20;
-	char[] name = new char [cvar_name_len];
-	char[] descr = new char[descr_len];
+	new cvar_name_len = strlen(cvar_name) + 12,
+		descr_len = strlen(cvar_name) + 20;
+	decl String:name[cvar_name_len],
+		String:descr[descr_len];
 
 	Format(name, cvar_name_len, "sm_%s_version", cvar_name);
 	Format(descr, descr_len, "\"%s\" - version number", plugin_name);
 
-	ConVar cvar = FindConVar(name);
-	int flags = FCVAR_NOTIFY | FCVAR_DONTRECORD | additional_flags;
+	new Handle:cvar = FindConVar(name),
+		flags = FCVAR_NOTIFY | FCVAR_DONTRECORD | additional_flags;
 
-	if (cvar != null)
-	{
+	if (cvar != INVALID_HANDLE) {
 		SetConVarString(cvar, plugin_version);
 		SetConVarFlags(cvar, flags);
 	}
-	else
-	{
+	else {
 		cvar = CreateConVar(name, plugin_version, descr, flags);
 	}
 
-	if (cvar != null)
-	{
-		delete cvar;
+	if (cvar != INVALID_HANDLE) {
+		CloseHandle(cvar);
 		return true;
 	}
 
@@ -494,62 +453,51 @@ stock int InitVersionCvar(
  * \return									Context sensitive; check detailed description
  * \error									Callback is invalid, or convar name is blank or is the same as an existing console command
  */
-stock any InitCvar(
-				   ConVar &cvar,						///<! [out] A handle to the newly created convar. If the convar already exists, a handle to it will still be returned.
-	               ConVarChanged callback,				///<! [in] Callback function called when the convar's value is modified.
-	               const char[] name,					///<! [in] Name of new convar
-	               const char[] defaultValue,			///<! [in] String containing the default value of new convar
-	               const char[] description = "",		///<! [in] Optional description of the convar
-	               int flags = 0,						///<! [in] Optional bitstring of flags determining how the convar should be handled. See FCVAR_* constants for more details
-	               bool hasMin = false,					///<! [in] Optional boolean that determines if the convar has a minimum value
-	               float min = 0.0,						///<! [in] Minimum floating point value that the convar can have if hasMin is true
-	               bool hasMax = false,					///<! [in] Optional boolean that determines if the convar has a maximum value
-	               float max = 0.0,						///<! [in] Maximum floating point value that the convar can have if hasMax is true
-	               int type = -1						///<! [in] Return / initialisation type
-                  )
-{
+stock any:InitCvar(
+	&Handle:cvar,							///<! [out] A handle to the newly created convar. If the convar already exists, a handle to it will still be returned.
+	ConVarChanged:callback,					///<! [in] Callback function called when the convar's value is modified.
+	const String:name[],					///<! [in] Name of new convar
+	const String:defaultValue[],			///<! [in] String containing the default value of new convar
+	const String:description[] = "",		///<! [in] Optional description of the convar
+	flags = 0,								///<! [in] Optional bitstring of flags determining how the convar should be handled. See FCVAR_* constants for more details
+	bool:hasMin = false,					///<! [in] Optional boolean that determines if the convar has a minimum value
+	Float:min = 0.0,						///<! [in] Minimum floating point value that the convar can have if hasMin is true
+	bool:hasMax = false,					///<! [in] Optional boolean that determines if the convar has a maximum value
+	Float:max = 0.0,						///<! [in] Maximum floating point value that the convar can have if hasMax is true
+	type = -1								///<! [in] Return / initialisation type
+) {
 	cvar = CreateConVar(name, defaultValue, description, flags, hasMin, min, hasMax, max);
-	if (cvar != null)
-	{
+	if (cvar != INVALID_HANDLE) {
 		HookConVarChange(cvar, callback);
 	}
-	else
-	{
+	else {
 		LogMessage("Couldn't create console variable \"%s\", using default value \"%s\".", name, defaultValue);
 	}
 
-	if (type < 0 || type > 3)
-	{
+	if (type < 0 || type > 3) {
 		type = 1;
-		int len = strlen(defaultValue);
-		for (int i = 0; i < len; i++)
-		{
-			if (defaultValue[i] == '.')
-			{
+		new len = strlen(defaultValue);
+		for (new i = 0; i < len; i++) {
+			if (defaultValue[i] == '.') {
 				type = 2;
 			}
-			else if (IsCharNumeric(defaultValue[i]))
-			{
+			else if (IsCharNumeric(defaultValue[i])) {
 				continue;
 			}
-			else
-			{
+			else {
 				type = 0;
 				break;
 			}
 		}
 	}
 
-	if (type == 1)
-	{
-		return cvar != null ? GetConVarInt(cvar) : StringToInt(defaultValue);
+	if (type == 1) {
+		return cvar != INVALID_HANDLE ? GetConVarInt(cvar) : StringToInt(defaultValue);
 	}
-	else if (type == 2)
-	{
-		return cvar != null ? GetConVarFloat(cvar) : StringToFloat(defaultValue);
+	else if (type == 2) {
+		return cvar != INVALID_HANDLE ? GetConVarFloat(cvar) : StringToFloat(defaultValue);
 	}
-	else if (cvar != null && type == 3)
-	{
+	else if (cvar != INVALID_HANDLE && type == 3) {
 		Call_StartFunction(INVALID_HANDLE, callback);
 		Call_PushCell(cvar);
 		Call_PushString("");
@@ -569,14 +517,12 @@ stock any InitCvar(
  *
  * \return									Whether the client is valid
  */
-stock int IsClientValid(
-						int &client,							///<! [in, out] The client's index
-						bool in_game = true,					///<! [in] Whether the client has to be ingame
-						bool in_kick_queue = false				///<! [in] Whether the client can be in the kick queue
-					   )
-{
-	if (client <= 0 || client > MaxClients)
-	{
+stock IsClientValid(
+	&client,								///<! [in, out] The client's index
+	bool:in_game = true,					///<! [in] Whether the client has to be ingame
+	bool:in_kick_queue = false				///<! [in] Whether the client can be in the kick queue
+) {
+	if (client <= 0 || client > MaxClients) {
 		client = GetClientFromSerial(client);
 	}
 
