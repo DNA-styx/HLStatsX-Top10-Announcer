@@ -42,8 +42,10 @@ public Plugin:myinfo = {
 };
 
 public OnPluginStart() {
-	static String:supported_games[4][] = {
+	static String:supported_games[6][] = {
 		"tf",
+		"dod",
+		"hl2mp",
 		"cstrike",
 		"lef4dead",
 		"l4d2"
@@ -54,11 +56,11 @@ public OnPluginStart() {
 	GetGameFolderName(buffer, sizeof(buffer));
 
 	new bool:supported = false;
-	for (new i = 0; i < 4; i++) {
+	for (new i = 0; i < 6; i++) {
 		if (StrEqual(buffer, supported_games[i], false)) {
 			supported = true;
 
-			if (i >= 2) {
+			if (i >= 4) {
 				g_IsLeft4Dead = true;
 			}
 		}
