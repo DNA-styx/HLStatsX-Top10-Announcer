@@ -1,4 +1,3 @@
-``DEC 24 - This plugin is currently not working``
 
 # HLStatsX-Top10-Announcer
 
