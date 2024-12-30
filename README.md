@@ -9,8 +9,8 @@
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/DNA-styx/HLStatsX-Top10-Announcer/.github%2Fworkflows%2Ftest_build.yaml)
 
 
-- https://forums.alliedmods.net/showthread.php?t=139703
-
+- Original release thread: https://forums.alliedmods.net/showthread.php?t=139703
+- Usage stats: https://www.sourcemod.net/newstats.php?mod_id=0&addon_id=2757
 
 
 # Setup
