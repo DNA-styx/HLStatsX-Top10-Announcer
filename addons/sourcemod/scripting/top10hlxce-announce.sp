@@ -30,7 +30,7 @@ new bool:g_IsLeft4Dead = false;
 #define PLUGIN_NAME "Top 10 hlstats ce announcer"
 #define PLUGIN_AUTHOR "Snelvuur, DNA.styx"
 #define PLUGIN_DESCRIPTION "Plays sound when a player top 10 ranked player of hlstats ce connects."
-#define PLUGIN_VERSION "2.0.1-dev"
+#define PLUGIN_VERSION "2.0.1-dev.1"
 #define PLUGIN_URL "https://forums.alliedmods.net/showthread.php?t=139703"
 
 public Plugin:myinfo = {
