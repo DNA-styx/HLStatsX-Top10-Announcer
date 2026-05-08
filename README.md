@@ -6,7 +6,6 @@
 ![Issues](https://img.shields.io/github/issues/DNA-styx/HLStatsX-Top10-Announcer)
 ![GitHub commit activity](https://img.shields.io/github/commit-activity/m/DNA-styx/HLStatsX-Top10-Announcer)
 ![GitHub last commit](https://img.shields.io/github/last-commit/DNA-styx/HLStatsX-Top10-Announcer)
-![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/DNA-styx/HLStatsX-Top10-Announcer/.github%2Fworkflows%2Ftest_build.yaml)
 
 
 - Original release thread: https://forums.alliedmods.net/showthread.php?t=139703
