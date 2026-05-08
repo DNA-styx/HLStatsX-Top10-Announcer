@@ -1,532 +1,440 @@
 /*
 top10hlxce-announce.sp
 
-Plays a announcement when a top10 ranked player of hlstats ce comes into your server and plays it to all.
-    
+Plays an announcement when a top10 ranked player of hlstats ce comes into your server.
+Uses HLStatsX API instead of direct database access.
 */
 #pragma semicolon 1
+#pragma newdecls required
 
 #include <sourcemod>
 #include <sdktools>
 #include <clientprefs>
 
+#undef REQUIRE_PLUGIN
+#include <hlstatsx_api>
+#define REQUIRE_PLUGIN
+
 #define MAX_SOUNDS 64
+#define PLUGIN_VERSION "2.1.1"
 
-new g_Rank[MAXPLAYERS+1] = { -1, ... };
+int g_Rank[MAXPLAYERS+1] = { -1, ... };
+int g_MessageType[MAXPLAYERS+1] = { -1, ... };
 
-new Handle:g_hCvEnabled, Handle:g_hCvGameType, Handle:g_hCvTextType, Handle:g_hCvSoundsFile;
-new bool:g_CvEnabled, String:g_CvGameType[32], g_CvTextType, Handle:g_kvSoundsFile, g_iTotalSounds;
+ConVar g_cvEnabled;
+ConVar g_cvTextType;
+ConVar g_cvSoundsFile;
 
-new Handle:g_hEnableAnnouncementCookie;
-new Handle:g_hPlaySoundCookie;
-new Handle:g_hAnnounceMeCookie;
-new Handle:g_hMessageTypeCookie, g_MessageType[MAXPLAYERS+1] = { -1, ... };
+Handle g_hEnableAnnouncementCookie;
+Handle g_hPlaySoundCookie;
+Handle g_hAnnounceMeCookie;
+Handle g_hMessageTypeCookie;
 
-new bool:g_Connecting = false;
-new Handle:g_hDatabase = INVALID_HANDLE;
+KeyValues g_kvSoundsFile;
+int g_iTotalSounds;
 
-new bool:g_IsLeft4Dead = false;
+bool g_bHLStatsApi = false;
+bool g_bStatsRequested[MAXPLAYERS+1] = { false, ... };
+bool g_bIsLeft4Dead = false;
 
-#define PLUGIN_NAME "Top 10 hlstats ce announcer"
-#define PLUGIN_AUTHOR "Snelvuur, DNA.styx"
-#define PLUGIN_DESCRIPTION "Plays sound when a player top 10 ranked player of hlstats ce connects."
-#define PLUGIN_VERSION "2.0.1-dev.1"
-#define PLUGIN_URL "https://forums.alliedmods.net/showthread.php?t=139703"
-
-public Plugin:myinfo = {
-	name = PLUGIN_NAME,
-	author = PLUGIN_AUTHOR,
-	description = PLUGIN_DESCRIPTION,
+public Plugin myinfo = {
+	name = "Top 10 HLStatsX CE Announcer",
+	author = "Snelvuur, Claude.ai guided by DNA.styx",
+	description = "Announces when top 10 ranked HLStatsX players connect",
 	version = PLUGIN_VERSION,
-	url = PLUGIN_URL
+	url = "https://github.com/DNA-styx/HLStatsX-Top10-Announcer"
 };
 
-public OnPluginStart() {
-	static String:supported_games[6][] = {
-		"tf",
-		"dod",
-		"hl2mp",
-		"cstrike",
-		"lef4dead",
-		"l4d2"
-	};
-
-	decl String:buffer[32];
-
-	GetGameFolderName(buffer, sizeof(buffer));
-
-	new bool:supported = false;
-	for (new i = 0; i < 6; i++) {
-		if (StrEqual(buffer, supported_games[i], false)) {
-			supported = true;
-
-			if (i >= 4) {
-				g_IsLeft4Dead = true;
-			}
-		}
-	}
-
-	if (!supported) {
-		SetFailState("Unsupported game \"%s\".", buffer);
-	}
-
-	InitVersionCvar("top10_hlstatsce", PLUGIN_NAME, PLUGIN_VERSION);
-	g_CvEnabled = InitCvar(g_hCvEnabled, OnConVarChanged, "sm_top10_hlstatsce_enabled", "1", "Whether this plugin should be enabled", FCVAR_DONTRECORD, true, 0.0, true, 1.0);
-	InitCvar(g_hCvGameType, OnConVarChanged, "sm_top10_hlstatsce_game", buffer, "The shortname found after the game settings for particular servers on admin page", FCVAR_DONTRECORD, _, _, _, _, 3);
-	g_CvTextType = InitCvar(g_hCvTextType, OnConVarChanged, "sm_top10_hlstatsce_text", "2", "Default message type. 1 = Center, 2 = Hint text, 3 = Regular text. Leave empty for center", FCVAR_DONTRECORD, true, 1.0, true, 3.0);
-	g_hCvSoundsFile = CreateConVar("sm_top10_hlstatsce_sounds", "addons/sourcemod/configs/top10_sounds.kv", "The config file containing the paths of sounds to play when a top10 hlstats player joins the game", FCVAR_DONTRECORD);
-
-	g_Connecting = true;
-	SQL_TConnect(T_Connect, "top10");
-
-	SetCookieMenuItem(CookieMenuHandler_Top10, 0, "Top10 Player Announcement");
-
-	g_hEnableAnnouncementCookie = RegClientCookie("hlstatsx_top10_joinmsg_enable", "Whether to print a chag message whenever a top10 player enters the server.", CookieAccess_Public);
-	g_hPlaySoundCookie = RegClientCookie("hlstatsx_top10_joinmsg_sound", "Whether to play a sound whenever a top10 player enters the server.", CookieAccess_Public);
-	g_hAnnounceMeCookie = RegClientCookie("hlstatsx_top10_announceme", "Whether the player's top10 rank should be announced when he enters the server.", CookieAccess_Public);
-	g_hMessageTypeCookie = RegClientCookie("hlstatsx_top10_joinmsg_type", "Top10 join message type. 1 = Center, 2 = Hint text, 3 = Regular text. Leave empty for center.", CookieAccess_Public);
-
-	RegConsoleCmd("sm_t14", t14);
-}
-
-public Action:t14(client, argc) {
-	g_Rank[client] = 1;
-	OnClientCookiesCached(client);
-	return Plugin_Handled;
-}
-
-public OnMapStart()
+public void OnPluginStart()
 {
-	if (!g_Connecting && g_hDatabase == INVALID_HANDLE)
-	{
-		g_Connecting = true;
-		SQL_TConnect(T_Connect, "top10");
+	// Validate game support
+	char gameFolder[32];
+	GetGameFolderName(gameFolder, sizeof(gameFolder));
+	
+	char supportedGames[][] = {
+		"tf", "dod", "hl2mp", "cstrike", "left4dead", "l4d2"
+	};
+	
+	bool supported = false;
+	for (int i = 0; i < sizeof(supportedGames); i++) {
+		if (StrEqual(gameFolder, supportedGames[i], false)) {
+			supported = true;
+			g_bIsLeft4Dead = (i >= 4); // left4dead and l4d2
+			break;
+		}
 	}
 	
-	if(!g_IsLeft4Dead && (g_hCvSoundsFile != INVALID_HANDLE))
-	{
-		decl String:path[PLATFORM_MAX_PATH];
-		GetConVarString(g_hCvSoundsFile, path, sizeof(path));
-		
-		if ((strlen(path) == 0) || !FileExists(path))
-		{
-			return;
-		}
-		
-		if(g_kvSoundsFile != INVALID_HANDLE)
-		{
-			CloseHandle(g_kvSoundsFile);
-			g_kvSoundsFile = INVALID_HANDLE;
-		}
-		g_kvSoundsFile = CreateKeyValues("");
-		FileToKeyValues(g_kvSoundsFile, path);
-		
-		g_iTotalSounds = 0;
-		decl String:KvStr[4], String:SndBuffer[PLATFORM_MAX_PATH];
-		
-		for(new i = 0; i < MAX_SOUNDS; i++)
-		{
-			Format(KvStr, sizeof(KvStr), "%i", i);
-			KvGetString(g_kvSoundsFile, KvStr, SndBuffer, PLATFORM_MAX_PATH, "\0");
-			if(!SndBuffer[0])
-			{
-				break;
-			}
-			PrecacheSound(SndBuffer, true);
-			Format(SndBuffer, sizeof(SndBuffer), "sound/%s", SndBuffer);
-			AddFileToDownloadsTable(SndBuffer);
-			g_iTotalSounds++;
-		}
+	if (!supported) {
+		SetFailState("Unsupported game: %s", gameFolder);
+	}
+	
+	// Create ConVars
+	CreateConVar("sm_top10_hlstatsce_version", PLUGIN_VERSION, 
+		"Top10 Announcer Version", FCVAR_NOTIFY | FCVAR_DONTRECORD);
+	
+	g_cvEnabled = CreateConVar("sm_top10_hlstatsce_enabled", "1", 
+		"Enable/disable the Top10 announcer plugin", 
+		FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	
+	g_cvTextType = CreateConVar("sm_top10_hlstatsce_text", "2", 
+		"Message display type: 1=Center, 2=Hint, 3=Chat", 
+		FCVAR_NONE, true, 1.0, true, 3.0);
+	
+	g_cvSoundsFile = CreateConVar("sm_top10_hlstatsce_sounds", 
+		"addons/sourcemod/configs/top10_sounds.kv", 
+		"Path to sounds configuration file", FCVAR_NONE);
+	
+	AutoExecConfig(true, "top10_hlstatsce");
+	
+	// Register cookies
+	SetCookieMenuItem(CookieMenuHandler_Top10, 0, "Top10 Announcements");
+	
+	g_hEnableAnnouncementCookie = RegClientCookie("hlstatsx_top10_joinmsg_enable", 
+		"Enable top10 join messages", CookieAccess_Public);
+	g_hPlaySoundCookie = RegClientCookie("hlstatsx_top10_joinmsg_sound", 
+		"Play sound when top10 player joins", CookieAccess_Public);
+	g_hAnnounceMeCookie = RegClientCookie("hlstatsx_top10_announceme", 
+		"Announce my rank when I join", CookieAccess_Public);
+	g_hMessageTypeCookie = RegClientCookie("hlstatsx_top10_joinmsg_type", 
+		"Message display type preference", CookieAccess_Public);
+}
+
+public void OnAllPluginsLoaded()
+{
+	g_bHLStatsApi = LibraryExists("hlstatsx_api");
+	
+	if (!g_bHLStatsApi) {
+		LogError("HLStatsX API plugin (hlstatsx_api.smx) is required but not loaded!");
 	}
 }
 
-public OnClientPostAdminCheck(client) {
-	if (!g_CvEnabled || IsFakeClient(client)) {
+public void OnLibraryAdded(const char[] name)
+{
+	if (StrEqual(name, "hlstatsx_api")) {
+		g_bHLStatsApi = true;
+	}
+}
+
+public void OnLibraryRemoved(const char[] name)
+{
+	if (StrEqual(name, "hlstatsx_api")) {
+		g_bHLStatsApi = false;
+	}
+}
+
+public void OnPluginEnd()
+{
+	delete g_kvSoundsFile;
+}
+
+public void OnMapStart()
+{
+	// Skip sound loading for L4D/L4D2
+	if (g_bIsLeft4Dead) {
 		return;
 	}
-
-	decl String:steamid[32];
-	GetClientAuthId(client, AuthId_Steam2, steamid, sizeof(steamid));
-	CheckTop10(client, steamid);
-}
-
-public OnClientDisconnect(client) {
-	g_Rank[client] = 0;
-	g_MessageType[client] = -1;
-}
-
-public OnClientCookiesCached(client) {
-	decl String:buffer[4];
-	if (g_Rank[client] > 0 && g_Rank[client] <= 10) {
-		GetClientCookie(client, g_hAnnounceMeCookie, buffer, sizeof(buffer));
-
-		if (StrEqual(buffer, "") || StringToInt(buffer)) {
-			decl String:message[128];
-			Format(message, sizeof(message), "Top 10 player %N connected, currently rank %i", client, g_Rank[client]);
-
-			for (new i = 1; i <= MaxClients; i++) {
-				if (!IsClientValid(i)) {
-					continue;
-				}
-
-				GetClientCookie(i, g_hEnableAnnouncementCookie, buffer, sizeof(buffer));
-
-				if (StrEqual(buffer, "") || StringToInt(buffer)) {
-					PrintMessage(i, message);
-				}
-			}
-
-			if (g_kvSoundsFile != INVALID_HANDLE && !g_IsLeft4Dead)
-			{
-				if(g_iTotalSounds)
-				{
-					decl String:KvStr[4], String:sound[PLATFORM_MAX_PATH];
-					new SndNum = GetRandomInt(0, g_iTotalSounds - 1);
-					
-					Format(KvStr, sizeof(KvStr), "%i", SndNum);
-					KvGetString(g_kvSoundsFile, KvStr, sound, PLATFORM_MAX_PATH, "\0");
-					
-					for (new i = 1; i <= MaxClients; i++)
-					{
-						if (!IsClientValid(i))
-						{
-							continue;
-						}
-
-						GetClientCookie(i, g_hPlaySoundCookie, buffer, sizeof(buffer));
-
-						if (StrEqual(buffer, "") || StringToInt(buffer))
-						{
-							EmitSoundToClient(i, sound);
-						}
-					}
-				}
-			}
-		}
+	
+	char path[PLATFORM_MAX_PATH];
+	g_cvSoundsFile.GetString(path, sizeof(path));
+	
+	if (path[0] == '\0' || !FileExists(path)) {
+		LogError("Sound config file not found: %s", path);
+		return;
 	}
+	
+	// Load sound configuration
+	delete g_kvSoundsFile;
+	g_kvSoundsFile = new KeyValues("top10_sounds");
+	
+	if (!FileToKeyValues(g_kvSoundsFile, path)) {
+		LogError("Failed to parse sound config: %s", path);
+		delete g_kvSoundsFile;
+		return;
+	}
+	
+	// Precache and add sounds to downloads
+	g_iTotalSounds = 0;
+	char key[4], soundPath[PLATFORM_MAX_PATH];
+	
+	for (int i = 0; i < MAX_SOUNDS; i++) {
+		IntToString(i, key, sizeof(key));
+		g_kvSoundsFile.GetString(key, soundPath, sizeof(soundPath));
+		
+		if (soundPath[0] == '\0') {
+			break;
+		}
+		
+		PrecacheSound(soundPath, true);
+		Format(soundPath, sizeof(soundPath), "sound/%s", soundPath);
+		AddFileToDownloadsTable(soundPath);
+		g_iTotalSounds++;
+	}
+}
+
+public void OnClientPostAdminCheck(int client)
+{
+	if (IsFakeClient(client) || !g_cvEnabled.BoolValue || !g_bHLStatsApi) {
+		return;
+	}
+	
+	g_bStatsRequested[client] = false;
+	RequestHLStatsRank(client);
+}
+
+public void OnClientDisconnect(int client)
+{
 	g_Rank[client] = -1;
+	g_MessageType[client] = -1;
+	g_bStatsRequested[client] = false;
 }
 
-PrintMessage(client, const String:text[]) {
-	switch(g_MessageType[client] != -1 ? g_MessageType[client] : g_CvTextType) {
-		case 1:
-		{
-			PrintCenterText(client, text);
-		}
-		case 2:
-		{
-			PrintHintText(client, text);
-		}
-		case 3:
-		{
-			PrintToChat(client, text);
-		}
-		default:
-		{
-			PrintCenterText(client, text);
-		}
-	}
-}
-
-CheckTop10(userid, const String:auth[])	{
-	if (g_hDatabase == INVALID_HANDLE) {
+void RequestHLStatsRank(int client)
+{
+	if (!IsClientInGame(client) || g_bStatsRequested[client]) {
 		return;
 	}
-
-	decl String:query[512];
-
-	Format(query, sizeof(query),
-		"SELECT COUNT(*) AS `rank` \
-		FROM hlstats_Players \
-		WHERE \
-			hlstats_Players.game = '%s' AND \
-			hideranking = 0 \
-			AND skill >= ( \
-				SELECT skill \
-				FROM hlstats_Players \
-				JOIN hlstats_PlayerUniqueIds \
-				ON hlstats_Players.playerId = hlstats_PlayerUniqueIds.playerId \
-				WHERE uniqueID = MID('%s', 9) \
-				AND hlstats_PlayerUniqueIds.game = '%s' \
-			)\
-		;", g_CvGameType, auth, g_CvGameType
-	);
-	SQL_TQuery(g_hDatabase, T_CheckTop10, query, userid);
-}
-
-public T_Connect(Handle:owner, Handle:hndl, const String:error[], any:data) {
-	g_Connecting = false;
-
-	if ((g_hDatabase = hndl) == INVALID_HANDLE)    {
-		LogError("Database failure: \"%s\"", error);
-		return;
-    }
-}
-
-public T_CheckTop10(Handle:owner, Handle:hndl, const String:error[], any:client) {
- 	if (!IsClientValid(client))    {
-        return;
-    }
-
-	if (hndl == INVALID_HANDLE)	{
-		LogError("Query failed: \"%s\"", error);
+	
+	bool success = HLStatsX_Api_GetStats("playerinfo", client, HLStatsX_Callback, 0);
+	
+	if (success) {
+		g_bStatsRequested[client] = true;
+	} else {
+		// Retry after 3 seconds
+		CreateTimer(3.0, Timer_RetryRequest, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
 	}
-	else {
-		if (SQL_FetchRow(hndl))	{
-			g_Rank[client] = SQL_FetchInt(hndl, 0);
-			if (AreClientCookiesCached(client)) {
-				OnClientCookiesCached(client);
-			}
+}
+
+public Action Timer_RetryRequest(Handle timer, int userid)
+{
+	int client = GetClientOfUserId(userid);
+	
+	if (client > 0 && IsClientInGame(client) && !g_bStatsRequested[client]) {
+		RequestHLStatsRank(client);
+	}
+	
+	return Plugin_Stop;
+}
+
+public void HLStatsX_Callback(int command, int payload, int client, DataPack &datapack)
+{
+	if (!IsClientInGame(client)) {
+		delete datapack;
+		return;
+	}
+	
+	DataPack pack = view_as<DataPack>(CloneHandle(datapack));
+	
+	int rank = pack.ReadCell(); // Player rank (only data we need)
+	
+	delete datapack;
+	delete pack;
+	
+	g_Rank[client] = rank;
+	
+	if (AreClientCookiesCached(client)) {
+		OnClientCookiesCached(client);
+	}
+}
+
+public void OnClientCookiesCached(int client)
+{
+	if (g_Rank[client] < 1 || g_Rank[client] > 10) {
+		g_Rank[client] = -1;
+		return;
+	}
+	
+	// Check if player wants their rank announced
+	char buffer[4];
+	GetClientCookie(client, g_hAnnounceMeCookie, buffer, sizeof(buffer));
+	
+	if (!StrEqual(buffer, "") && !StringToInt(buffer)) {
+		return; // Player disabled their announcement
+	}
+	
+	// Build announcement message
+	char message[128];
+	Format(message, sizeof(message), 
+		"Top 10 player %N connected, currently rank %d", client, g_Rank[client]);
+	
+	// Send to all players who want announcements
+	for (int i = 1; i <= MaxClients; i++) {
+		if (!IsClientInGame(i)) {
+			continue;
+		}
+		
+		GetClientCookie(i, g_hEnableAnnouncementCookie, buffer, sizeof(buffer));
+		
+		if (StrEqual(buffer, "") || StringToInt(buffer)) {
+			PrintMessage(i, message);
+		}
+	}
+	
+	// Play sound if configured
+	if (g_kvSoundsFile != null && g_iTotalSounds > 0) {
+		PlayTop10Sound();
+	}
+	
+	g_Rank[client] = -1; // Reset after announcement
+}
+
+void PlayTop10Sound()
+{
+	char key[4], sound[PLATFORM_MAX_PATH], buffer[4];
+	int soundIndex = GetRandomInt(0, g_iTotalSounds - 1);
+	
+	IntToString(soundIndex, key, sizeof(key));
+	g_kvSoundsFile.GetString(key, sound, sizeof(sound));
+	
+	if (sound[0] == '\0') {
+		return;
+	}
+	
+	for (int i = 1; i <= MaxClients; i++) {
+		if (!IsClientInGame(i)) {
+			continue;
+		}
+		
+		GetClientCookie(i, g_hPlaySoundCookie, buffer, sizeof(buffer));
+		
+		if (StrEqual(buffer, "") || StringToInt(buffer)) {
+			EmitSoundToClient(i, sound);
 		}
 	}
 }
 
-public CookieMenuHandler_Top10(client, CookieMenuAction:action, any:info, String:buffer[], maxlen) {
+void PrintMessage(int client, const char[] text)
+{
+	int messageType = (g_MessageType[client] != -1) ? 
+		g_MessageType[client] : g_cvTextType.IntValue;
+	
+	switch (messageType) {
+		case 1: PrintCenterText(client, text);
+		case 2: PrintHintText(client, text);
+		case 3: PrintToChat(client, text);
+		default: PrintCenterText(client, text);
+	}
+}
+
+// ========================================================================
+// COOKIE MENU SYSTEM
+// ========================================================================
+
+public void CookieMenuHandler_Top10(int client, CookieMenuAction action, any info, char[] buffer, int maxlen)
+{
 	if (action == CookieMenuAction_SelectOption) {
 		ShowPrefMenu(client);
 	}
 }
 
-ShowPrefMenu(client) {
-	decl String:display[128],
-		String:cookie[4],
-		bool:enable;
-
-	new Handle:menu = CreateMenu(MenuHandler_Top10);
-
-	GetClientCookie(client, g_hEnableAnnouncementCookie, cookie, sizeof(cookie));
-	enable = !StrEqual(cookie, "") && !StringToInt(cookie);
-	Format(display, sizeof(display), "%sable top10 player join messages", enable ? "En" : "Dis");
-	AddMenuItem(menu, enable ? "1" : "0", display);
-
-	GetClientCookie(client, g_hPlaySoundCookie, cookie, sizeof(cookie));
-	enable = !StrEqual(cookie, "") && !StringToInt(cookie);
-	Format(display, sizeof(display), "%sable playing a sound whenever a top10 player enters the server", enable ? "En" : "Dis");
-	AddMenuItem(menu, enable ? "1" : "0", display);
-
-	GetClientCookie(client, g_hAnnounceMeCookie, cookie, sizeof(cookie));
-	enable = !StrEqual(cookie, "") && !StringToInt(cookie);
-	Format(display, sizeof(display), "%sable broadcasting my top10 join message", enable ? "En" : "Dis");
-	AddMenuItem(menu, enable ? "1" : "0", display);
-
-	GetClientCookie(client, g_hMessageTypeCookie, cookie, sizeof(cookie));
-	Format(display, sizeof(display), "Alter Top10 join message type (%s)", StrEqual(cookie, "") ? "1" : cookie);
-	AddMenuItem(menu, "", display);
-
-	SetMenuExitButton(menu, true);
-	DisplayMenu(menu, client, MENU_TIME_FOREVER);
-}
-
-public MenuHandler_Top10(Handle:menu, MenuAction:action, param1, param2) {
-	if (action == MenuAction_Select) {
-		decl String:buffer[4];
-
-		GetMenuItem(menu, param2, buffer, sizeof(buffer));
-
-		decl Handle:cookie;
-		switch (param2) {
-			case 0:
-			{
-				cookie = g_hEnableAnnouncementCookie;
-			}
-			case 1:
-			{
-				cookie = g_hPlaySoundCookie;
-			}
-			case 2:
-			{
-				cookie = g_hAnnounceMeCookie;
-			}
-			case 3:
-			{
-				ShowMsgTypePrefMenu(param1);
-				return;
-			}
-			default:
-			{
-				ShowPrefMenu(param1);
-				return;
-			}
-		}
-
-		SetClientCookie(param1, cookie, buffer);
-		ShowPrefMenu(param1);
-	}
-	else if (action == MenuAction_Cancel) {
-		ShowCookieMenu(param1);
-	}
-	else if (action == MenuAction_End) {
-		CloseHandle(menu);
-	}
-}
-
-ShowMsgTypePrefMenu(client) {
-	new Handle:menu = CreateMenu(MenuHandler_MessageType);
-	SetMenuTitle(menu, "Choose an option:");
-	AddMenuItem(menu, "1", "Center text");
-	AddMenuItem(menu, "2", "Hint text");
-	AddMenuItem(menu, "3", "Regular text");
-	SetMenuExitButton(menu, true);
-	DisplayMenu(menu, client, MENU_TIME_FOREVER);
-}
+void ShowPrefMenu(int client)
+{
+	Menu menu = new Menu(MenuHandler_Top10);
+	menu.SetTitle("Top10 Announcement Settings");
 	
-public MenuHandler_MessageType(Handle:menu, MenuAction:action, param1, param2) {
-	if (action == MenuAction_Select) {
-		decl String:buffer[4];
-
-		GetMenuItem(menu, param2, buffer, sizeof(buffer));
-		SetClientCookie(param1, g_hMessageTypeCookie, buffer);
-		g_MessageType[param1] = StringToInt(buffer);
-		ShowPrefMenu(param1);
+	char display[128], cookie[4];
+	bool enabled;
+	
+	// Enable/disable join messages
+	GetClientCookie(client, g_hEnableAnnouncementCookie, cookie, sizeof(cookie));
+	enabled = StrEqual(cookie, "") || StringToInt(cookie);
+	Format(display, sizeof(display), "%s: Join Messages", enabled ? "Disable" : "Enable");
+	menu.AddItem(enabled ? "0" : "1", display);
+	
+	// Enable/disable sounds
+	GetClientCookie(client, g_hPlaySoundCookie, cookie, sizeof(cookie));
+	enabled = StrEqual(cookie, "") || StringToInt(cookie);
+	Format(display, sizeof(display), "%s: Join Sounds", enabled ? "Disable" : "Enable");
+	menu.AddItem(enabled ? "0" : "1", display);
+	
+	// Enable/disable personal announcement
+	GetClientCookie(client, g_hAnnounceMeCookie, cookie, sizeof(cookie));
+	enabled = StrEqual(cookie, "") || StringToInt(cookie);
+	Format(display, sizeof(display), "%s: Announce My Rank", enabled ? "Disable" : "Enable");
+	menu.AddItem(enabled ? "0" : "1", display);
+	
+	// Change message type
+	GetClientCookie(client, g_hMessageTypeCookie, cookie, sizeof(cookie));
+	int msgType = StrEqual(cookie, "") ? g_cvTextType.IntValue : StringToInt(cookie);
+	char msgTypeStr[16];
+	switch (msgType) {
+		case 1: msgTypeStr = "Center";
+		case 2: msgTypeStr = "Hint";
+		case 3: msgTypeStr = "Chat";
+		default: msgTypeStr = "Center";
 	}
-	else if (action == MenuAction_Cancel) {
-		ShowPrefMenu(param1);
-	}
-	else if (action == MenuAction_End) {
-		CloseHandle(menu);
-	}
+	Format(display, sizeof(display), "Message Type: %s", msgTypeStr);
+	menu.AddItem("", display);
+	
+	menu.ExitBackButton = true;
+	menu.Display(client, MENU_TIME_FOREVER);
 }
 
-public OnConVarChanged(Handle:cvar, const String:oldVal[], const String:newVal[]) {
-	if (cvar == g_hCvEnabled) {
-		g_CvEnabled = bool:StringToInt(newVal);
-	}
-	else if (cvar == g_hCvGameType) {
-		strcopy(g_CvGameType, sizeof(g_CvGameType), newVal);
-	}
-	else if (cvar == g_hCvTextType) {
-		g_CvTextType = StringToInt(newVal);
-	}
-}
-
-/**
- * \brief Creates a plugin version console variable.
- *
- * \return									Whether creating the console variable was successful
- * \error									Convar name is blank or is the same as an existing console command
- */
-stock InitVersionCvar(
-	const String:cvar_name[],				///<! [in] The console variable's name (sm_<name>_version)
-	const String:plugin_name[],				///<! [in] The plugin's name
-	const String:plugin_version[],			///<! [in] The plugin's version
-	additional_flags = 0					///<! [in] additional FCVAR_* flags  (default: FCVAR_NOTIFY | FCVAR_SPONLY | FCVAR_DONTRECORD)
-) {
-	if (StrEqual(cvar_name, "") || StrEqual(plugin_name, "")) {
-		return false;
-	}
-
-	new cvar_name_len = strlen(cvar_name) + 12,
-		descr_len = strlen(cvar_name) + 20;
-	decl String:name[cvar_name_len],
-		String:descr[descr_len];
-
-	Format(name, cvar_name_len, "sm_%s_version", cvar_name);
-	Format(descr, descr_len, "\"%s\" - version number", plugin_name);
-
-	new Handle:cvar = FindConVar(name),
-		flags = FCVAR_NOTIFY | FCVAR_DONTRECORD | additional_flags;
-
-	if (cvar != INVALID_HANDLE) {
-		SetConVarString(cvar, plugin_version);
-		SetConVarFlags(cvar, flags);
-	}
-	else {
-		cvar = CreateConVar(name, plugin_version, descr, flags);
-	}
-
-	if (cvar != INVALID_HANDLE) {
-		CloseHandle(cvar);
-		return true;
-	}
-
-	LogError("Couldn't create version console variable \"%s\".", name);
-	return false;
-}
-
-/**
- * \brief Creates a new console variable and hooks it to the specified OnConVarChanged: callback.
- *
- * This function attempts to deduce from the default value what type of data (int, float)
- * is supposed to be stored in the console variable, and returns its value accordingly.
- * (Its type can also be manually specified.) Alternatively one could opt to let the
- * ConVarChanged: callback do the initialisation. This is however prone to error;
- * should CreateConVar() fail, the callback is never fired.
- *
- * \return									Context sensitive; check detailed description
- * \error									Callback is invalid, or convar name is blank or is the same as an existing console command
- */
-stock any:InitCvar(
-	&Handle:cvar,							///<! [out] A handle to the newly created convar. If the convar already exists, a handle to it will still be returned.
-	ConVarChanged:callback,					///<! [in] Callback function called when the convar's value is modified.
-	const String:name[],					///<! [in] Name of new convar
-	const String:defaultValue[],			///<! [in] String containing the default value of new convar
-	const String:description[] = "",		///<! [in] Optional description of the convar
-	flags = 0,								///<! [in] Optional bitstring of flags determining how the convar should be handled. See FCVAR_* constants for more details
-	bool:hasMin = false,					///<! [in] Optional boolean that determines if the convar has a minimum value
-	Float:min = 0.0,						///<! [in] Minimum floating point value that the convar can have if hasMin is true
-	bool:hasMax = false,					///<! [in] Optional boolean that determines if the convar has a maximum value
-	Float:max = 0.0,						///<! [in] Maximum floating point value that the convar can have if hasMax is true
-	type = -1								///<! [in] Return / initialisation type
-) {
-	cvar = CreateConVar(name, defaultValue, description, flags, hasMin, min, hasMax, max);
-	if (cvar != INVALID_HANDLE) {
-		HookConVarChange(cvar, callback);
-	}
-	else {
-		LogMessage("Couldn't create console variable \"%s\", using default value \"%s\".", name, defaultValue);
-	}
-
-	if (type < 0 || type > 3) {
-		type = 1;
-		new len = strlen(defaultValue);
-		for (new i = 0; i < len; i++) {
-			if (defaultValue[i] == '.') {
-				type = 2;
+public int MenuHandler_Top10(Menu menu, MenuAction action, int param1, int param2)
+{
+	switch (action) {
+		case MenuAction_Select: {
+			char value[4];
+			menu.GetItem(param2, value, sizeof(value));
+			
+			Handle cookie;
+			switch (param2) {
+				case 0: cookie = g_hEnableAnnouncementCookie;
+				case 1: cookie = g_hPlaySoundCookie;
+				case 2: cookie = g_hAnnounceMeCookie;
+				case 3: {
+					ShowMessageTypeMenu(param1);
+					return 0;
+				}
+				default: {
+					ShowPrefMenu(param1);
+					return 0;
+				}
 			}
-			else if (IsCharNumeric(defaultValue[i])) {
-				continue;
-			}
-			else {
-				type = 0;
-				break;
+			
+			SetClientCookie(param1, cookie, value);
+			ShowPrefMenu(param1);
+		}
+		case MenuAction_Cancel: {
+			if (param2 == MenuCancel_ExitBack) {
+				ShowCookieMenu(param1);
 			}
 		}
+		case MenuAction_End: {
+			delete menu;
+		}
 	}
-
-	if (type == 1) {
-		return cvar != INVALID_HANDLE ? GetConVarInt(cvar) : StringToInt(defaultValue);
-	}
-	else if (type == 2) {
-		return cvar != INVALID_HANDLE ? GetConVarFloat(cvar) : StringToFloat(defaultValue);
-	}
-	else if (cvar != INVALID_HANDLE && type == 3) {
-		Call_StartFunction(INVALID_HANDLE, callback);
-		Call_PushCell(cvar);
-		Call_PushString("");
-		Call_PushString(defaultValue);
-		Call_Finish();
-
-		return true;
-	}
-
 	return 0;
 }
 
-/**
- * \brief Returns whether the client is valid.
- *
- * If the client is out of range, this function assumes the input was a client serial.
- *
- * \return									Whether the client is valid
- */
-stock IsClientValid(
-	&client,								///<! [in, out] The client's index
-	bool:in_game = true,					///<! [in] Whether the client has to be ingame
-	bool:in_kick_queue = false				///<! [in] Whether the client can be in the kick queue
-) {
-	if (client <= 0 || client > MaxClients) {
-		client = GetClientFromSerial(client);
-	}
+void ShowMessageTypeMenu(int client)
+{
+	Menu menu = new Menu(MenuHandler_MessageType);
+	menu.SetTitle("Choose Message Type:");
+	menu.AddItem("1", "Center Text");
+	menu.AddItem("2", "Hint Text");
+	menu.AddItem("3", "Chat Text");
+	menu.ExitBackButton = true;
+	menu.Display(client, MENU_TIME_FOREVER);
+}
 
-	return client > 0 && client <= MaxClients && IsClientConnected(client) && (!in_game || IsClientInGame(client)) && (in_kick_queue || !IsClientInKickQueue(client));
+public int MenuHandler_MessageType(Menu menu, MenuAction action, int param1, int param2)
+{
+	switch (action) {
+		case MenuAction_Select: {
+			char value[4];
+			menu.GetItem(param2, value, sizeof(value));
+			SetClientCookie(param1, g_hMessageTypeCookie, value);
+			g_MessageType[param1] = StringToInt(value);
+			ShowPrefMenu(param1);
+		}
+		case MenuAction_Cancel: {
+			if (param2 == MenuCancel_ExitBack) {
+				ShowPrefMenu(param1);
+			}
+		}
+		case MenuAction_End: {
+			delete menu;
+		}
+	}
+	return 0;
 }
