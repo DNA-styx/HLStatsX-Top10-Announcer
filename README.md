@@ -15,20 +15,11 @@
 
 # Setup
 
-databases.cfg
+New for v2.1.1 direct database connection not needed, uses HLStatsX API    
+Ensure hlstatsx_api.smx from your HLStatsX install is in your sourcemod plugins directory    
+Copy the entire release .zip to your game server     
+Copy the sounds to your fast download server    
 
-```
-"top10"
-	{
-		"driver"			"default"
-		"host"				"<your database ip or hostname>"
-		"database"			"<your hlstatx database name>"
-		"user"				"<your database userid>"
-		"pass"				"<your database password>"
-		//"timeout"			"0"
-		"port"				"3306"
-	}
-```
 
 # Cvars
 
